@@ -32,22 +32,19 @@ unsigned long IdsCooker::BtoI(int start, int numofbits)
 
 IdsCooker *IdsCooker::staticInduction;
 
-IdsCooker::IdsCooker(IdsType type) 
+IdsCooker::IdsCooker(IdsType type)
 {
     staticInduction = this;
-
-    // this->IDS_TYPE = type;  
+    this->IDS_TYPE = type;
 }
 
-IdsCooker::IdsCooker(IdsType type, char white, char yellow, char interrupt)
+IdsCooker::IdsCooker(IdsType type, uint8_t white, uint8_t yellow, uint8_t interrupt)
 {
     staticInduction = this;
-
-    // this->IDS_TYPE  = type;
-
-    // this->PIN_WHITE = white;
-    // this->PIN_YELLOW = yellow;
-    // this->PIN_INTERRUPT = interrupt;
+    this->IDS_TYPE      = type;
+    this->PIN_WHITE     = white;
+    this->PIN_YELLOW    = yellow;
+    this->PIN_INTERRUPT = interrupt;
 }
 
 void IdsCooker::Init()
@@ -150,8 +147,6 @@ void IdsCooker::updatePower()
             /* Wie lange "HIGH" oder "LOW" */
             this->powerHigh = this->powerSampletime;
             this->powerLow = 0;
-
-            Serial.println("off");
         }
         else
         {
@@ -250,7 +245,11 @@ void IdsCooker::sendCommand(int command[33])
     }   
 }
 
- void ICACHE_RAM_ATTR IdsCooker::readInputStatic()
+#ifdef ESP8266
+void ICACHE_RAM_ATTR IdsCooker::readInputStatic()
+#else
+void IRAM_ATTR IdsCooker::readInputStatic()
+#endif
 {
     staticInduction->readInput();
 }
@@ -348,18 +347,22 @@ bool IdsCooker::updateError()
           errorMessage = "Fehler: " + errorCode;          // Unbekannt
        }
 
-       
-    Serial.println("error!");
-
-       Serial.println(errorMessage);
-  } 
+  }
   else 
   {
     if (errorCode != 0) 
     {
       returnValue = true;
-    } 
-    else { returnValue = false; }    
-  }  
+    }
+    else { returnValue = false; }
+  }
   return returnValue;
+}
+
+int IdsCooker::getErrorCode() const {
+    return errorCode;
+}
+
+const char* IdsCooker::getError() const {
+    return errorCode != 0 ? errorMessage.c_str() : nullptr;
 }

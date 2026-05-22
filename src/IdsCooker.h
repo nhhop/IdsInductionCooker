@@ -104,13 +104,16 @@ class IdsCooker
     public:
         IdsType IDS_TYPE = IdsType::IDS2;
 
-        unsigned char PIN_WHITE = D5;     // D5 RELAIS
-        unsigned char PIN_YELLOW = D6;    // D6 AUSGABE AN PLATTE
-        unsigned char PIN_INTERRUPT = D7; // D7 EINGABE VON PLATTE
+        unsigned char PIN_WHITE = 5;      // GPIO5 (≡ D5 on NodeMCU/ESP8266) RELAIS
+        unsigned char PIN_YELLOW = 6;     // GPIO6 (≡ D6) AUSGABE AN PLATTE
+        unsigned char PIN_INTERRUPT = 7;  // GPIO7 (≡ D7) EINGABE VON PLATTE
 
         IdsCooker(IdsType type);
-        IdsCooker(IdsType type, char white, char yellow, char interrupt);
-        void Update(const int setpower);    
-        void Init();    
+        IdsCooker(IdsType type, uint8_t white, uint8_t yellow, uint8_t interrupt);
+        void Update(const int setpower);
+        void Init();
+
+        int         getErrorCode() const;
+        const char* getError()     const;  // nullptr when no error
 };
 #endif

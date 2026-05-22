@@ -363,6 +363,6 @@ int IdsCooker::getErrorCode() const {
     return errorCode;
 }
 
-const char* IdsCooker::getError() const {
-    return errorCode != 0 ? errorMessage.c_str() : nullptr;
+const String& IdsCooker::getError() const {
+    return errorMessage;
 }

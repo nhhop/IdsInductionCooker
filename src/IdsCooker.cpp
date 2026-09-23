@@ -435,7 +435,11 @@ bool IdsCooker::updateError()
           errorMessage = errorMessages[1];    // Kein Topf
           break;
         default:
-          errorMessage = "Fehler: " + errorCode;          // Unbekannt
+          /* String("...") + int, nicht "..." + int: letzteres ist
+             Zeigerarithmetik auf dem Literal, keine Konkatenation. Bei
+             errorCode 1 erschien dadurch "ehler: " (am Geraet gesehen
+             2026-09-23), ab 9 zeigte der Zeiger hinter das Literal. */
+          errorMessage = String("Fehler ") + errorCode;    // Unbekannt
        }
 
   }

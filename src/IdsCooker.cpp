@@ -349,7 +349,12 @@ void IdsCooker::readInput()
 
             if (!this->inputStarted)
             { // suche noch nach StartBit.
-                if (signalTime < 35000L && signalTime > 15000L)
+                /* 45 ms statt 35: die Platte sendet Startpulse bis 34,1 ms (am
+                   Geraet gemessen 2026-09-23), das liess nur 0,9 ms Reserve. Ihre
+                   Frames kommen lueckenlos, es gibt also kein HIGH-Intervall
+                   zwischen 35 und 45 ms, das faelschlich als Start durchginge.
+                   Verlorene Frames waeren unsichtbar - errorCode bliebe 0. */
+                if (signalTime < 45000L && signalTime > 15000L)
                 {
                     this->inputStarted = true;
                     this->inputCurrent = 0;
@@ -357,24 +362,34 @@ void IdsCooker::readInput()
             }
             else
             { // Hat Begonnen. Nehme auf.
-                if (this->inputCurrent < 34)
-                { // nur bis 33 aufnehmen.
-                    if (signalTime < (SIGNAL_HIGH + SIGNAL_HIGH_TOL) && signalTime > (SIGNAL_HIGH - SIGNAL_HIGH_TOL))
-                    {
-                        // HIGH BIT erkannt
-                        this->inputBuffer[this->inputCurrent] = 1;
-                        this->inputCurrent += 1;
-                    }
-                    if (signalTime < (SIGNAL_LOW + SIGNAL_LOW_TOL) && signalTime > (SIGNAL_LOW - SIGNAL_LOW_TOL))
-                    {
-                        // LOW BIT erkannt
-                        this->inputBuffer[this->inputCurrent] = 0;
-                        this->inputCurrent += 1;
-                    }
+                if (signalTime < (SIGNAL_HIGH + SIGNAL_HIGH_TOL) && signalTime > (SIGNAL_HIGH - SIGNAL_HIGH_TOL))
+                {
+                    // HIGH BIT erkannt
+                    this->inputBuffer[this->inputCurrent] = 1;
+                    this->inputCurrent += 1;
+                }
+                else if (signalTime < (SIGNAL_LOW + SIGNAL_LOW_TOL) && signalTime > (SIGNAL_LOW - SIGNAL_LOW_TOL))
+                {
+                    // LOW BIT erkannt
+                    this->inputBuffer[this->inputCurrent] = 0;
+                    this->inputCurrent += 1;
                 }
                 else
-                { 
-                  // Aufnahme vorbei.
+                { /* Weder HIGH noch LOW: der Frame ist aus dem Tritt (Stoerung,
+                     oder ein Startpuls). Verwerfen und neu synchronisieren. Ohne
+                     diesen Zweig bliebe inputStarted fuer immer true, sobald ein
+                     einziger Puls danebenliegt - es kaeme nie wieder eine
+                     Rueckmeldung an. */
+                  this->inputCurrent = 0;
+                  this->inputStarted = false;
+                  return;
+                }
+
+                if (this->inputCurrent >= 33)
+                { /* 33 Bits vollstaendig. Hier stand "< 34", womit erst ein 34.
+                     Bit die Auswertung ausloeste - das die Platte nie sendet. Der
+                     Fehlercode kam dadurch einen Frame zu spaet, und
+                     inputBuffer[33] wurde ein Byte hinter dem Array beschrieben. */
 
                   /* Auswerten */
                   newError = BtoI(13,4);          // Fehlercode auslesen.
@@ -385,8 +400,8 @@ void IdsCooker::readInput()
                        DEBUG_MSG(inputBuffer[i]);
                   }
                   DEBUG_MSG("!\n");
-                  
-                  /* von Vorne */   
+
+                  /* von Vorne */
                   this->inputCurrent = 0;
                   this->inputStarted = false;
                 }

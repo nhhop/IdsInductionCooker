@@ -3,6 +3,19 @@
 
 #include <Arduino.h>
 
+// sendCommand() hands the whole frame to the RMT peripheral and returns,
+// instead of clocking 33 bits out with delayMicroseconds(). The software
+// path blocks the caller for ~139 ms per frame, twice a second.
+//
+// This uses the arduino-esp32 2.x RMT HAL. Core 3 ships an incompatible API
+// and the ESP8266 has no RMT at all; both keep the software timing, which
+// stays in place unchanged as the fallback.
+#if defined(ARDUINO_ARCH_ESP32) && defined(ESP_ARDUINO_VERSION_MAJOR) && \
+    ESP_ARDUINO_VERSION_MAJOR < 3
+#define IDS_USE_RMT 1
+#include <esp32-hal-rmt.h>
+#endif
+
 enum IdsType
 {
     IDS1 = 1,
@@ -36,6 +49,16 @@ class IdsCooker
         // int powerLevelBeforeError = 0; // in error event save last power state
 
         unsigned char CMD_CUR = 0; // Aktueller Befehl
+
+#ifdef IDS_USE_RMT
+        // 34 items: [0] carries the 25 ms start pulse plus the 10 ms wait,
+        // [1+i] carries bit i plus its trailing 1280 us gap. This buffer must
+        // outlive the call and must not be rewritten while a frame is on the
+        // wire - rmt_write_items() points at this memory instead of copying it.
+        rmt_obj_t *rmtTx = nullptr;
+        rmt_data_t rmtItems[34];
+        unsigned long txEndMs = 0;
+#endif
 
         bool isRelayon = false; // Systemstatus: ist das Relais in der Platte an?
         bool isInduon = false;  // Systemstatus: ist Power > 0?

@@ -59,7 +59,27 @@ void IdsCooker::Init()
 
   // Meldung an Platte
   pinMode(PIN_YELLOW, OUTPUT);
+#ifdef IDS_USE_RMT
+  this->rmtTx = rmtInit(PIN_YELLOW, RMT_TX_MODE, RMT_MEM_64);
+  if (this->rmtTx != nullptr)
+  {
+    // Mandatory, and mandatory *after* rmtInit(): that leaves clk_div at 1
+    // (12.5 ns per tick), at which 25 ms does not fit the 15-bit duration
+    // field. One tick per microsecond makes the CMD table usable as-is.
+    rmtSetTick(this->rmtTx, 1000.0f);
+    // No digitalWrite(HIGH) here: the peripheral drives the pin now and
+    // idles it LOW (idle_level = RMT_IDLE_LEVEL_LOW, idle_output_en = true),
+    // which is what the protocol wants. readInput() hunts for the start bit
+    // on a RISING edge, so a HIGH idle level has no edge to trigger on and
+    // would merge with the 25 ms preamble of the first frame.
+  }
+  else
+  {
+    digitalWrite(PIN_YELLOW, HIGH); // no free RMT channel: software path
+  }
+#else
   digitalWrite(PIN_YELLOW, HIGH);
+#endif
 
   this->setupCommands();
 }
@@ -231,6 +251,41 @@ void IdsCooker::updateCommand()
 
 void IdsCooker::sendCommand(int command[33])
 {
+#ifdef IDS_USE_RMT
+    if (this->rmtTx != nullptr)
+    {
+        // A frame is still being clocked out. Two reasons to drop this one
+        // rather than queue it: rmt_write_items() takes the channel semaphore
+        // with portMAX_DELAY, so a second call would block the caller for the
+        // rest of the transmission - exactly what this change removes - and it
+        // does not copy the item buffer, so refilling it now would corrupt the
+        // frame in flight. At a 500 ms cadence and ~146 ms per frame this
+        // cannot trigger; it costs one comparison to keep it that way.
+        if ((long)(millis() - this->txEndMs) < 0)
+        {
+            return;
+        }
+
+        this->rmtItems[0].level0    = 1;
+        this->rmtItems[0].duration0 = SIGNAL_START * 1000;
+        this->rmtItems[0].level1    = 0;
+        this->rmtItems[0].duration1 = SIGNAL_WAIT * 1000;
+
+        unsigned long totalUs = (unsigned long)(SIGNAL_START + SIGNAL_WAIT) * 1000;
+        for (int i = 0; i < 33; i++)
+        {
+            this->rmtItems[i + 1].level0    = 1;
+            this->rmtItems[i + 1].duration0 = command[i];
+            this->rmtItems[i + 1].level1    = 0;
+            this->rmtItems[i + 1].duration1 = SIGNAL_LOW;
+            totalUs += (unsigned long)command[i] + SIGNAL_LOW;
+        }
+
+        this->txEndMs = millis() + (totalUs / 1000) + 1;
+        rmtWrite(this->rmtTx, this->rmtItems, 34);
+        return;
+    }
+#endif
     digitalWrite(this->PIN_YELLOW, HIGH);
     this->millis2wait(SIGNAL_START);
     digitalWrite(this->PIN_YELLOW, LOW);

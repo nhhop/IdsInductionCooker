@@ -133,6 +133,7 @@ class IdsCooker
 
         IdsCooker(IdsType type);
         IdsCooker(IdsType type, uint8_t white, uint8_t yellow, uint8_t interrupt);
+        ~IdsCooker();
         void Update(const int setpower);
         void Init();
 

@@ -47,6 +47,27 @@ IdsCooker::IdsCooker(IdsType type, uint8_t white, uint8_t yellow, uint8_t interr
     this->PIN_INTERRUPT = interrupt;
 }
 
+IdsCooker::~IdsCooker()
+{
+    // Order matters. The interrupt has to go first: readInputStatic()
+    // dereferences staticInduction, so an edge arriving after the object is
+    // gone would write into freed memory.
+    detachInterrupt(digitalPinToInterrupt(this->PIN_INTERRUPT));
+#ifdef IDS_USE_RMT
+    if (this->rmtTx != nullptr)
+    {
+        rmtDeinit(this->rmtTx);
+        this->rmtTx = nullptr;
+    }
+#endif
+    if (staticInduction == this)
+    {
+        staticInduction = nullptr;
+    }
+    // PIN_YELLOW is deliberately left alone: after rmtDeinit() it stays LOW,
+    // which is the resting level the cooker expects.
+}
+
 void IdsCooker::Init()
 {
   // Relais

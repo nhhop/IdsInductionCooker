@@ -32,6 +32,21 @@ unsigned long IdsCooker::BtoI(int start, int numofbits)
 
 IdsCooker *IdsCooker::staticInduction;
 
+/*  Binaere Signale fuer Induktionsplatte. 1 = langer Puls, 0 = kurzer;
+    sendCommand() setzt das in SIGNAL_HIGH/SIGNAL_LOW um. */
+const int IdsCooker::CMD[11][33] = {
+{1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0},    // Aus    (IDS1 und IDS2)
+{1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0},    // P1     (IDS1 und IDS2)
+{1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0},    // P2     (IDS1 und IDS2)
+{1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0},    // P3     (IDS1 und IDS2)
+{1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0},    // P4     (IDS1 und IDS2)
+{1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0},    // P5     (IDS1 und IDS2)
+{1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0},    // P6     (IDS1)
+{1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0},    // P7     (IDS1)
+{1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0},    // P8     (IDS1)
+{1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0},    // P9     (IDS1)
+{1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0}};    // P10    (IDS1)
+
 IdsCooker::IdsCooker(IdsType type)
 {
     staticInduction = this;
@@ -101,33 +116,22 @@ void IdsCooker::Init()
 #else
   digitalWrite(PIN_YELLOW, HIGH);
 #endif
-
-  this->setupCommands();
-}
-
-void IdsCooker::setupCommands()
-{
-    for (int i = 0; i < 33; i++)
-    {
-        for (int j = 0; j < 11; j++)
-        {
-          if (CMD[j][i] == 1)
-          {
-              CMD[j][i] = SIGNAL_HIGH;
-          }
-          else
-          {
-              CMD[j][i] = SIGNAL_LOW;
-          }
-        }
-    }
 }
 
 void IdsCooker::Update(const int setpower)
 {
-  if (updateError())  
-    return;
-  
+  /* updateError() haelt errorCode und errorMessage fuer getError()
+     aktuell - mehr nicht. Frueher stand hier ein "if (updateError())
+     return;": ab dem ersten Fehlercode wurde der uebergebene Sollwert
+     verworfen, Relais und Stufe froren ein, und es ging kein einziger
+     Frame mehr raus, auch kein "Aus". Damit erreichte selbst ein
+     Not-Aus die Platte nicht mehr, solange ein Fehler anstand.
+     SensActCtrls Actuator-Contract verlangt das Gegenteil: wer ueber
+     ein Protokoll spricht, muss aktiv Null kommandieren, weil
+     Schweigen die Gegenseite weiterlaufen laesst. Ein erzwungenes
+     Abschalten gehoert eine Schicht hoeher, wo es konfigurierbar ist. */
+  updateError();
+
   this->newPower = setpower;
 
   this->updatePower();
@@ -197,7 +201,16 @@ void IdsCooker::updatePower()
                 {
                     this->CMD_CUR = i/this->IDS_TYPE;
                     /* Wie lange "HIGH" oder "LOW" */
-                    this->powerLow = this->powerSampletime * (this->PWR_STEPS[this->CMD_CUR]*this->IDS_TYPE - this->power) / 20L;
+                    /* Stufenbreite aus der Tabelle, nicht die feste 20:
+                       die war IDS2s 20-%-Raster. IDS1 hat 10-%-Stufen und
+                       bekam dadurch nur die halbe Low-Zeit - bei 45 %
+                       kamen 47,5 % heraus (am Geraet gemessen 2026-09-24:
+                       75 % P5 / 25 % P4 statt 50/50). CMD_CUR >= 1 ist hier
+                       sicher, die Schleife startet bei i = IDS_TYPE. */
+                    const long stepSpan = (long)(this->PWR_STEPS[this->CMD_CUR] -
+                                                 this->PWR_STEPS[this->CMD_CUR - 1]) *
+                                          this->IDS_TYPE;
+                    this->powerLow = this->powerSampletime * (this->PWR_STEPS[this->CMD_CUR]*this->IDS_TYPE - this->power) / stepSpan;
                     this->powerHigh = this->powerSampletime - this->powerLow;
                     
                     DEBUG_MSG("P_set: %i% IDS%i -> Stufe:%i (%i%), on:%i/off:%i\n", power, IDS_TYPE, CMD_CUR, PWR_STEPS[CMD_CUR]*IDS_TYPE, powerHigh, powerLow);
@@ -211,42 +224,6 @@ void IdsCooker::updatePower()
 
 void IdsCooker::updateCommand()
 {
-  // if (isRelayon == true && isInduon == true) {
-
-  //   unsigned long timeNow = millis();                 /* aktuelle millis() festhalten */
-    
-  //   if (isPower == true) 
-  //   {                            /* Aktuell Hohe Stufe */                         
-  //     if (timeNow > powerLast + powerHigh) 
-  //     {          /* Prüfen, ob Zeit für Hohe Stufe vorbei */
-  //       isPower = false;                              /* Wenn ja, Niedrige Stufe. */
-  //       powerLast = millis();                         /* Zeit festhalten. */
-  //     } 
-  //     else 
-  //     {  
-  //       sendCommand(CMD[CMD_CUR]);                    /* Befel "Hohe Stufe" sennden. */ 
-  //     }
-  //   } 
-  //   else 
-  //   {                                          /* Aktuell niedrige Stufe. */
-  //     if (timeNow > powerLast + powerLow) 
-  //     {           /* Prüfen, ob Zeit für niedrige Stufe vorbei */
-  //       isPower = true;                               /* Wenn ja, hohe Stufe. */
-  //       powerLast = millis();                         /* Zeit festhalten. */
-  //     } 
-  //     else 
-  //     {
-  //       sendCommand(CMD[(CMD_CUR - 1)]);              /* Befel "Niedrige Stufe" sennden. */     
-  //     }
-  //   }     
-  // } 
-  // else 
-  // {                                            
-  //    isPower = false;
-  //    powerLast = 0;
-  //    sendCommand(CMD[0]);                             /* Befel "Niedrige Stufe" sennden. */
-  // }
-
     if (this->isInduon && this->power > 0)
     {
         if (millis() > this->powerLast + this->powerSampletime)
@@ -270,7 +247,7 @@ void IdsCooker::updateCommand()
     }
 }
 
-void IdsCooker::sendCommand(int command[33])
+void IdsCooker::sendCommand(const int *command)
 {
 #ifdef IDS_USE_RMT
     if (this->rmtTx != nullptr)
@@ -295,11 +272,12 @@ void IdsCooker::sendCommand(int command[33])
         unsigned long totalUs = (unsigned long)(SIGNAL_START + SIGNAL_WAIT) * 1000;
         for (int i = 0; i < 33; i++)
         {
+            const int bitUs = command[i] ? SIGNAL_HIGH : SIGNAL_LOW;
             this->rmtItems[i + 1].level0    = 1;
-            this->rmtItems[i + 1].duration0 = command[i];
+            this->rmtItems[i + 1].duration0 = bitUs;
             this->rmtItems[i + 1].level1    = 0;
             this->rmtItems[i + 1].duration1 = SIGNAL_LOW;
-            totalUs += (unsigned long)command[i] + SIGNAL_LOW;
+            totalUs += (unsigned long)bitUs + SIGNAL_LOW;
         }
 
         this->txEndMs = millis() + (totalUs / 1000) + 1;
@@ -315,7 +293,7 @@ void IdsCooker::sendCommand(int command[33])
     for (int i = 0; i < 33; i++)
     {
         digitalWrite(this->PIN_YELLOW, HIGH);
-        delayMicroseconds(command[i]);
+        delayMicroseconds(command[i] ? SIGNAL_HIGH : SIGNAL_LOW);
         digitalWrite(this->PIN_YELLOW, LOW);
         delayMicroseconds(SIGNAL_LOW);
     }   
@@ -410,14 +388,12 @@ void IdsCooker::readInput()
     }
 }
 
-bool IdsCooker::updateError()
+void IdsCooker::updateError()
 {
-  bool returnValue = false;
   if (newError != errorCode) 
   {        // Hat sich geändert?!
       
     errorCode = newError;
-    returnValue = true;                     // Ja, hat sich geändert. 
     /* Fehlermeldung Setzen */
       switch (errorCode) 
       {
@@ -429,7 +405,6 @@ bool IdsCooker::updateError()
           break;
         case 0:
           errorMessage = errorMessages[0];    // Kein Fehler
-          returnValue = false;
           break;
         case 2:
           errorMessage = errorMessages[1];    // Kein Topf
@@ -443,15 +418,6 @@ bool IdsCooker::updateError()
        }
 
   }
-  else 
-  {
-    if (errorCode != 0) 
-    {
-      returnValue = true;
-    }
-    else { returnValue = false; }
-  }
-  return returnValue;
 }
 
 int IdsCooker::getErrorCode() const {

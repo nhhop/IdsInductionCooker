@@ -27,16 +27,16 @@ class IdsCooker
     private:
         static IdsCooker *staticInduction;
 
-        unsigned long timeTurnedoff;
+        unsigned long timeTurnedoff = 0;
         unsigned long delayAfteroff = 120000;
-        unsigned long lastInterrupt;
+        unsigned long lastInterrupt = 0;
 
         bool inputStarted = false;
         unsigned char inputCurrent = 0;
         unsigned char inputBuffer[33];
 
         long powerSampletime = 20000;
-        unsigned long powerLast;
+        unsigned long powerLast = 0;
         long powerHigh = powerSampletime; // Dauer des "HIGH"-Anteils im Schaltzyklus
         long powerLow = 0;
         
@@ -94,22 +94,15 @@ class IdsCooker
         const int SIGNAL_WAIT_TOL = 5;
 
         /*  Binäre Signale für Induktionsplatte */
-        int CMD[11][33] = {
-        {1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0},    // Aus    (IDS1 und IDS2)
-        {1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0},    // P1     (IDS1 und IDS2)
-        {1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0},    // P2     (IDS1 und IDS2)
-        {1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0},    // P3     (IDS1 und IDS2)
-        {1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0},    // P4     (IDS1 und IDS2)
-        {1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0},    // P5     (IDS1 und IDS2)
-        {1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0},    // P6     (IDS1)
-        {1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0},    // P7     (IDS1)
-        {1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0},    // P8     (IDS1)
-        {1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0},    // P9     (IDS1)
-        {1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0}};   // P10    (IDS1)
+        /* Konstant und statisch. Frueher rechnete setupCommands() diese
+           Tabelle in-place in Pulsdauern um, wodurch ein zweiter Init()
+           sie komplett auf SIGNAL_LOW gesetzt haette - jedes Kommando
+           waere zu 33 Null-Bits geworden. sendCommand() rechnet jetzt
+           beim Senden um; statisch spart das nebenbei 1452 Byte Heap je
+           Instanz, weil die Tabelle ins Flash wandert. */
+        static const int CMD[11][33];
 
         unsigned char PWR_STEPS[11] = {0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100};   // Prozentuale Abstufung zwischen den Stufen
-
-        void setupCommands(); 
 
         static void readInputStatic();
         void readInput();
@@ -117,12 +110,12 @@ class IdsCooker
         bool updateRelay();
         void updatePower();
         void updateCommand();
-        void sendCommand(int command[33]);
+        void sendCommand(const int *command);
 
         void millis2wait(const int &value);
         unsigned long BtoI(int start, int numofbits);
 
-        bool updateError();
+        void updateError();
 
     public:
         IdsType IDS_TYPE = IdsType::IDS2;

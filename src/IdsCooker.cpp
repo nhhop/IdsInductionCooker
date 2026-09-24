@@ -30,7 +30,6 @@ unsigned long IdsCooker::BtoI(int start, int numofbits)
   return integer;
 } 
 
-IdsCooker *IdsCooker::staticInduction;
 
 /*  Binaere Signale fuer Induktionsplatte. 1 = langer Puls, 0 = kurzer;
     sendCommand() setzt das in SIGNAL_HIGH/SIGNAL_LOW um. */
@@ -49,13 +48,11 @@ const int IdsCooker::CMD[11][33] = {
 
 IdsCooker::IdsCooker(IdsType type)
 {
-    staticInduction = this;
     this->IDS_TYPE = type;
 }
 
 IdsCooker::IdsCooker(IdsType type, uint8_t white, uint8_t yellow, uint8_t interrupt)
 {
-    staticInduction = this;
     this->IDS_TYPE      = type;
     this->PIN_WHITE     = white;
     this->PIN_YELLOW    = yellow;
@@ -64,8 +61,8 @@ IdsCooker::IdsCooker(IdsType type, uint8_t white, uint8_t yellow, uint8_t interr
 
 IdsCooker::~IdsCooker()
 {
-    // Order matters. The interrupt has to go first: readInputStatic()
-    // dereferences staticInduction, so an edge arriving after the object is
+    // Order matters. The interrupt has to go first: it carries this
+    // instance as its argument, so an edge arriving after the object is
     // gone would write into freed memory.
     detachInterrupt(digitalPinToInterrupt(this->PIN_INTERRUPT));
 #ifdef IDS_USE_RMT
@@ -75,10 +72,6 @@ IdsCooker::~IdsCooker()
         this->rmtTx = nullptr;
     }
 #endif
-    if (staticInduction == this)
-    {
-        staticInduction = nullptr;
-    }
     // PIN_YELLOW is deliberately left alone: after rmtDeinit() it stays LOW,
     // which is the resting level the cooker expects.
 }
@@ -91,7 +84,12 @@ void IdsCooker::Init()
 
   // Rückmeldung der Platte
   pinMode(PIN_INTERRUPT, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(PIN_INTERRUPT), readInputStatic, CHANGE);
+  /* Mit Instanz-Argument statt ueber einen globalen Zeiger: den hat
+     frueher jeder Konstruktor ueberschrieben, sodass eine zweite Instanz
+     der ersten die Interrupt-Zustellung stahl - still, denn nur die
+     zuletzt angelegte bekam noch Rueckmeldungen. */
+  attachInterruptArg(digitalPinToInterrupt(PIN_INTERRUPT), readInputStatic,
+                     this, CHANGE);
 
   // Meldung an Platte
   pinMode(PIN_YELLOW, OUTPUT);
@@ -111,7 +109,13 @@ void IdsCooker::Init()
   }
   else
   {
-    digitalWrite(PIN_YELLOW, HIGH); // no free RMT channel: software path
+    /* Kein freier RMT-Kanal - zurueck auf den Software-Pfad, der den
+       Aufrufer ~139 ms je Frame blockiert. Das Kanalbudget ist
+       board-abhaengig (ESP32 8, ESP32-S2 4, ESP32-S3 4 sendefaehige) und
+       begrenzt damit die Zahl gleichzeitiger Platten haerter als der
+       Interrupt. Die ueberzaehlige Instanz faellt hier nicht auf, sie
+       verlangsamt den ganzen loop(). */
+    digitalWrite(PIN_YELLOW, HIGH);
   }
 #else
   digitalWrite(PIN_YELLOW, HIGH);
@@ -300,12 +304,12 @@ void IdsCooker::sendCommand(const int *command)
 }
 
 #ifdef ESP8266
-void ICACHE_RAM_ATTR IdsCooker::readInputStatic()
+void ICACHE_RAM_ATTR IdsCooker::readInputStatic(void *arg)
 #else
-void IRAM_ATTR IdsCooker::readInputStatic()
+void IRAM_ATTR IdsCooker::readInputStatic(void *arg)
 #endif
 {
-    staticInduction->readInput();
+    static_cast<IdsCooker *>(arg)->readInput();
 }
 
 void IdsCooker::readInput()

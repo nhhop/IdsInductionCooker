@@ -25,8 +25,6 @@ enum IdsType
 class IdsCooker
 {
     private:
-        static IdsCooker *staticInduction;
-
         unsigned long timeTurnedoff = 0;
         unsigned long delayAfteroff = 120000;
         unsigned long lastInterrupt = 0;
@@ -104,7 +102,7 @@ class IdsCooker
 
         unsigned char PWR_STEPS[11] = {0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100};   // Prozentuale Abstufung zwischen den Stufen
 
-        static void readInputStatic();
+        static void readInputStatic(void *arg);
         void readInput();
         
         bool updateRelay();

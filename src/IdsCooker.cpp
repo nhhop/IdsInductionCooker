@@ -374,7 +374,23 @@ void IdsCooker::readInput()
                      inputBuffer[33] wurde ein Byte hinter dem Array beschrieben. */
 
                   /* Auswerten */
-                  newError = BtoI(13,4);          // Fehlercode auslesen.
+                  const int code = (int)BtoI(13,4);   // Fehlercode auslesen.
+                  if (code == 0)
+                  {                                  // Entwarnung sofort.
+                      this->errorStreak = 0;
+                      this->pendingError = 0;
+                      this->newError = 0;
+                  }
+                  else if (code == this->pendingError)
+                  {
+                      if (this->errorStreak < ERROR_FRAMES) this->errorStreak++;
+                      if (this->errorStreak >= ERROR_FRAMES) this->newError = code;
+                  }
+                  else
+                  {                                  // neuer Code, Zaehlung neu.
+                      this->pendingError = code;
+                      this->errorStreak = 1;
+                  }
                   DEBUG_MSG("Error: %i:", newError);
                   for(int i=0;i<33; i++)
                   {

@@ -65,6 +65,17 @@ class IdsCooker
         bool isError = false;          // Systemstatus: Fehlermeldung von der Platte?
         int errorCode = 0;                // Ziffer der Fehlermeldung
         int newError = 0;                 // Empfangene Fehlermeldung
+        /* Entprellung des Fehlercodes, nur von der ISR benutzt. Die Platte
+           meldet beim Anlaufen ein bis zwei Frames lang einen Code, der
+           keinen Betriebszustand beschreibt (am Geraet gemessen 2026-09-25:
+           Code 1, 0,3-0,9 s nach dem Schliessen des Relais). Ein einzelner
+           gestoerter Frame soll ohnehin nie einen Alarm ausloesen, deshalb
+           wird ein Code erst nach drei gleichen Frames uebernommen - bei
+           ~366 ms Frameabstand rund 1,1 s. Die 0 gilt sofort: spaeter
+           melden ist die harmlose Richtung, spaeter entwarnen nicht. */
+        int pendingError = 0;
+        unsigned char errorStreak = 0;
+        static const unsigned char ERROR_FRAMES = 3;
         String  errorMessage = "";        // Fehlermeldung String
         String errorMessages[13] = {
         "                ",

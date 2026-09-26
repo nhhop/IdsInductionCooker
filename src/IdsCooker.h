@@ -56,6 +56,7 @@ class IdsCooker
         rmt_obj_t *rmtTx = nullptr;
         rmt_data_t rmtItems[34];
         unsigned long txEndMs = 0;
+        bool rmtInitTried = false;  // distinguishes "no channel" from "Init() not called yet"
 #endif
 
         bool isRelayon = false; // Systemstatus: ist das Relais in der Platte an?
@@ -141,5 +142,9 @@ class IdsCooker
 
         int         getErrorCode() const;
         const String& getError()   const;  // empty string when no error; valid until next Update() call
+        // true when Init() found no free RMT channel and frames go out through the
+        // blocking software path (~139 ms per frame). Always false where RMT is unused
+        // by design (core 3, ESP8266) - only a lost channel counts as a fallback.
+        bool rmtFallback() const;
 };
 #endif

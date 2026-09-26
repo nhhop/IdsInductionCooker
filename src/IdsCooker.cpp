@@ -95,6 +95,7 @@ void IdsCooker::Init()
   pinMode(PIN_YELLOW, OUTPUT);
 #ifdef IDS_USE_RMT
   this->rmtTx = rmtInit(PIN_YELLOW, RMT_TX_MODE, RMT_MEM_64);
+  this->rmtInitTried = true;
   if (this->rmtTx != nullptr)
   {
     // Mandatory, and mandatory *after* rmtInit(): that leaves clk_div at 1
@@ -119,6 +120,15 @@ void IdsCooker::Init()
   }
 #else
   digitalWrite(PIN_YELLOW, HIGH);
+#endif
+}
+
+bool IdsCooker::rmtFallback() const
+{
+#ifdef IDS_USE_RMT
+    return this->rmtTx == nullptr && this->rmtInitTried;
+#else
+    return false;
 #endif
 }
 

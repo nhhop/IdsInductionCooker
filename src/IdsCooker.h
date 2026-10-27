@@ -7,12 +7,15 @@
 // instead of clocking 33 bits out with delayMicroseconds(). The software
 // path blocks the caller for ~139 ms per frame, twice a second.
 //
-// This uses the arduino-esp32 2.x RMT HAL. Core 3 ships an incompatible API
-// and the ESP8266 has no RMT at all; both keep the software timing, which
-// stays in place unchanged as the fallback.
-#if defined(ARDUINO_ARCH_ESP32) && defined(ESP_ARDUINO_VERSION_MAJOR) && \
-    ESP_ARDUINO_VERSION_MAJOR < 3
+// Both arduino-esp32 RMT HALs are supported: 2.x hands out an rmt_obj_t,
+// core 3 addresses the channel by pin (IDS_RMT_CORE3). The ESP8266 has no
+// RMT at all and keeps the software timing, which stays in place unchanged
+// as the fallback.
+#if defined(ARDUINO_ARCH_ESP32) && defined(ESP_ARDUINO_VERSION_MAJOR)
 #define IDS_USE_RMT 1
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+#define IDS_RMT_CORE3 1
+#endif
 #include <esp32-hal-rmt.h>
 #endif
 
@@ -52,8 +55,12 @@ class IdsCooker
         // 34 items: [0] carries the 25 ms start pulse plus the 10 ms wait,
         // [1+i] carries bit i plus its trailing 1280 us gap. This buffer must
         // outlive the call and must not be rewritten while a frame is on the
-        // wire - rmt_write_items() points at this memory instead of copying it.
+        // wire - neither core copies it, both read it while transmitting.
+#ifdef IDS_RMT_CORE3
+        bool rmtTx = false;  // core 3 addresses the channel by pin
+#else
         rmt_obj_t *rmtTx = nullptr;
+#endif
         rmt_data_t rmtItems[34];
         unsigned long txEndMs = 0;
         bool rmtInitTried = false;  // distinguishes "no channel" from "Init() not called yet"

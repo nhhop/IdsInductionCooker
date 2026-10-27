@@ -66,10 +66,15 @@ IdsCooker::~IdsCooker()
     // gone would write into freed memory.
     detachInterrupt(digitalPinToInterrupt(this->PIN_INTERRUPT));
 #ifdef IDS_USE_RMT
-    if (this->rmtTx != nullptr)
+    if (this->rmtTx)
     {
+#ifdef IDS_RMT_CORE3
+        rmtDeinit(this->PIN_YELLOW);
+        this->rmtTx = false;
+#else
         rmtDeinit(this->rmtTx);
         this->rmtTx = nullptr;
+#endif
     }
 #endif
     // PIN_YELLOW is deliberately left alone: after rmtDeinit() it stays LOW,
@@ -94,14 +99,23 @@ void IdsCooker::Init()
   // Meldung an Platte
   pinMode(PIN_YELLOW, OUTPUT);
 #ifdef IDS_USE_RMT
+#ifdef IDS_RMT_CORE3
+  // One tick per microsecond, so the CMD table is usable as-is and 25 ms
+  // still fits the 15-bit duration field. One memory block holds 48 (S2/S3)
+  // or 64 (ESP32) symbols, enough for the 34 of a frame.
+  this->rmtTx = rmtInit(PIN_YELLOW, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_1, 1000000);
+#else
   this->rmtTx = rmtInit(PIN_YELLOW, RMT_TX_MODE, RMT_MEM_64);
+#endif
   this->rmtInitTried = true;
-  if (this->rmtTx != nullptr)
+  if (this->rmtTx)
   {
+#ifndef IDS_RMT_CORE3
     // Mandatory, and mandatory *after* rmtInit(): that leaves clk_div at 1
     // (12.5 ns per tick), at which 25 ms does not fit the 15-bit duration
     // field. One tick per microsecond makes the CMD table usable as-is.
     rmtSetTick(this->rmtTx, 1000.0f);
+#endif
     // No digitalWrite(HIGH) here: the peripheral drives the pin now and
     // idles it LOW (idle_level = RMT_IDLE_LEVEL_LOW, idle_output_en = true),
     // which is what the protocol wants. readInput() hunts for the start bit
@@ -126,7 +140,7 @@ void IdsCooker::Init()
 bool IdsCooker::rmtFallback() const
 {
 #ifdef IDS_USE_RMT
-    return this->rmtTx == nullptr && this->rmtInitTried;
+    return !this->rmtTx && this->rmtInitTried;
 #else
     return false;
 #endif
@@ -264,7 +278,7 @@ void IdsCooker::updateCommand()
 void IdsCooker::sendCommand(const int *command)
 {
 #ifdef IDS_USE_RMT
-    if (this->rmtTx != nullptr)
+    if (this->rmtTx)
     {
         // A frame is still being clocked out. Two reasons to drop this one
         // rather than queue it: rmt_write_items() takes the channel semaphore
@@ -295,7 +309,14 @@ void IdsCooker::sendCommand(const int *command)
         }
 
         this->txEndMs = millis() + (totalUs / 1000) + 1;
+#ifdef IDS_RMT_CORE3
+        // rmtWrite() blocks until the frame is out; the async variant is the
+        // 2.x behaviour. The txEndMs guard above keeps it from being refused
+        // as "still transmitting".
+        rmtWriteAsync(this->PIN_YELLOW, this->rmtItems, 34);
+#else
         rmtWrite(this->rmtTx, this->rmtItems, 34);
+#endif
         return;
     }
 #endif
